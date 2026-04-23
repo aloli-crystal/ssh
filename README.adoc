@@ -1,0 +1,99 @@
+= crystal-ssh
+:toc: left
+:toc-title: Table des matières
+:source-highlighter: rouge
+:icons: font
+
+Wrapper Crystal **isolé** autour du binaire `ssh` système, pour les
+outils de provisioning et d'automatisation qui doivent ignorer
+complètement la configuration utilisateur (`~/.ssh/config`,
+`~/.ssh/known_hosts`, `ssh-agent`).
+
+== Pourquoi ce shard
+
+Un outil de provisioning qui invoque `ssh` hérite par défaut de tout
+l'environnement utilisateur : fichier `config`, `known_hosts`, agent,
+clés par défaut. Cela rend l'exécution **non reproductible** entre
+postes, et pollue les sessions interactives (un reboot en rescue fait
+changer la clé d'hôte → known_hosts cassé, prompt fingerprint).
+
+`crystal-ssh` impose à chaque connexion un contexte totalement
+isolé :
+
+- `-F /dev/null` : ignore `~/.ssh/config`
+- `UserKnownHostsFile=/dev/null` + `GlobalKnownHostsFile=/dev/null` :
+  pas de `known_hosts` lu ni écrit
+- `IdentityAgent=none` : ignore `ssh-agent`
+- `IdentitiesOnly=yes` : n'essaie que la clé passée en `-i`
+- `BatchMode=yes` : aucun prompt interactif (pas de mot de passe,
+  pas de confirmation de fingerprint)
+- `StrictHostKeyChecking=no` : les changements de clé d'hôte ne
+  bloquent pas — adapté aux flows rescue/bootstrap
+
+Conséquence : deux postes avec des configurations ssh différentes
+exécuteront le même code de la même manière, et beryl ne pollue
+plus votre `~/.ssh/known_hosts` avec des clés jetables.
+
+== Installation
+
+[source,yaml]
+----
+dependencies:
+  ssh:
+    github: aloli-crystal/crystal-ssh
+    branch: production
+----
+
+== Usage
+
+[source,crystal]
+----
+require "ssh"
+
+# Découvre la clé privée par convention Aloli :
+#   "philippe-aloli-fr" → ~/.ssh/philippe.aloli.fr.key
+store = SSH::KeyStore.new
+key   = store.path_for!("philippe-aloli-fr")
+
+conn = SSH::Connection.new(
+  host: "ns3156789.ip-51-83-6.eu",
+  user: "root",
+  identity_file: key,
+)
+
+result = conn.exec("uname -a")
+puts result.stdout
+----
+
+En cas d'échec de l'auth publickey, `BatchMode=yes` garantit un
+retour d'erreur immédiat — pas de prompt qui fige un flow
+automatisé.
+
+== Convention de découverte des clés
+
+`SSH::KeyStore` découvre les clés dans un dossier (par défaut
+`~/.ssh`) avec la convention Aloli :
+
+- clé privée : `<name>.key` (pas `<name>` ni `<name>.pem`)
+- clé publique : `<name>.pub`
+
+Le `<name>` peut contenir des points (ex: `philippe.aloli.fr`). Le
+`path_for("philippe-aloli-fr")` teste le nom tel quel puis avec
+`-` → `.` pour matcher la convention de fichiers.
+
+Avantage du suffixe `.key` : un `.gitignore` générique `*.key` exclut
+toutes les clés privées, contrairement à des conventions sans
+extension.
+
+== Sécurité
+
+`StrictHostKeyChecking=no` laisse théoriquement la porte à un MITM
+entre le poste et l'hôte. Ce shard cible des outils de provisioning
+qui parlent à des rescue ou des images fraîchement installées —
+contextes où la clé d'hôte n'est pas stable de toute façon. Pour les
+connexions interactives où la clé d'hôte doit être vérifiée, utilisez
+`ssh` directement, pas ce shard.
+
+== Licence
+
+MIT. Voir `LICENSE`.

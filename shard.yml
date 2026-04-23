@@ -1,0 +1,19 @@
+name: ssh
+version: 0.1.0
+
+description: >
+  Wrapper Crystal isolé autour du binaire `ssh` système, pour les outils
+  de provisioning et d'automatisation qui doivent ignorer complètement
+  la configuration utilisateur (~/.ssh/config, ~/.ssh/known_hosts,
+  ssh-agent). Chaque connexion utilise une clé explicitement passée,
+  avec `BatchMode=yes` (jamais de prompt interactif), `StrictHostKeyChecking=no`
+  (hosts jetables de type rescue/bootstrap), et `IdentitiesOnly=yes`.
+  Le `KeyStore` découvre les clés dans `~/.ssh/*.key` par convention
+  Aloli (`philippe-aloli-fr` → `philippe.aloli.fr.key`).
+
+authors:
+  - ALOLI sas <philippe@aloli.fr>
+
+crystal: ">= 1.19.1"
+
+license: MIT

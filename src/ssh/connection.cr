@@ -1,0 +1,177 @@
+require "process"
+
+module SSH
+  # Connexion SSH **isolée** vers un hôte distant.
+  #
+  # Contrairement à un `ssh` lancé à la main, cette connexion ignore
+  # totalement l'environnement utilisateur :
+  #
+  #   - `~/.ssh/config` n'est **pas** lu (`-F /dev/null`)
+  #   - `~/.ssh/known_hosts` n'est **pas** lu ni écrit
+  #     (`UserKnownHostsFile=/dev/null`, `GlobalKnownHostsFile=/dev/null`)
+  #   - `ssh-agent` est **ignoré** (`IdentityAgent=none`)
+  #   - seule la clé passée en `identity_file` est essayée
+  #     (`IdentitiesOnly=yes`)
+  #   - aucun prompt interactif n'est possible (`BatchMode=yes` : ni
+  #     mot de passe, ni keyboard-interactive, ni confirmation de clé)
+  #   - les changements de clé d'hôte ne bloquent pas
+  #     (`StrictHostKeyChecking=no`) — adapté aux flows
+  #     rescue/bootstrap où la clé change à chaque reboot
+  #
+  # Conséquence pratique : deux postes avec des configurations ssh
+  # différentes exécuteront le même code de la même manière. Aucune
+  # pollution croisée avec les sessions interactives de l'utilisateur.
+  #
+  # **Sécurité** : `StrictHostKeyChecking=no` laisse théoriquement la
+  # porte à un MITM entre le poste et l'hôte distant. Ce wrapper est
+  # prévu pour des outils de provisioning qui parlent à des rescue ou
+  # des images fraîchement installées — contextes où la clé d'hôte
+  # n'est de toute façon pas stable. Si vous avez besoin de vérifier
+  # une clé d'hôte stable, utilisez `ssh` directement, pas ce shard.
+  class Connection
+    # Options ssh forcées sur toutes les connexions. L'appelant peut
+    # ajouter des options via le paramètre `options`, mais celles-ci
+    # ne peuvent pas être écrasées (elles sont ajoutées *après* pour
+    # gagner par ordre d'apparition côté `ssh -o`).
+    FORCED_OPTIONS = {
+      "StrictHostKeyChecking" => "no",
+      "UserKnownHostsFile"    => "/dev/null",
+      "GlobalKnownHostsFile"  => "/dev/null",
+      "LogLevel"              => "ERROR",
+      "BatchMode"             => "yes",
+      "IdentitiesOnly"        => "yes",
+      "IdentityAgent"         => "none",
+    }
+
+    getter host : String
+    getter user : String
+    getter port : Int32
+    getter identity_file : String?
+    getter options : Hash(String, String)
+
+    # Crée une connexion vers `host` pour l'utilisateur `user` sur le
+    # port `port`. Si `identity_file` est fourni, il est passé en `-i`
+    # et aucune autre clé n'est essayée (grâce à `IdentitiesOnly=yes`).
+    # Sinon aucune clé n'est fournie → l'auth publickey échouera avec
+    # un message clair (cas « pas de clé résoluble »).
+    def initialize(
+      @host : String,
+      @user : String = "root",
+      @port : Int32 = 22,
+      @identity_file : String? = nil,
+      @options : Hash(String, String) = {} of String => String,
+    )
+    end
+
+    # Exécute une commande distante. Lève `CommandFailed` si
+    # `exit_code != 0`, sauf si `raise_on_error: false`.
+    #
+    # `stdin` : contenu à piper sur l'entrée standard distante. Quand
+    # fourni, on n'ajoute pas `-n` à l'appel ssh (sinon le pipe est
+    # court-circuité). Quand absent, on passe `-n` pour fermer stdin
+    # à la source — indispensable sur macOS où `Process.run` peut
+    # laisser le canal ssh ouvert.
+    def exec(
+      command : String,
+      stdin : String? = nil,
+      raise_on_error : Bool = true,
+    ) : Result
+      stdout_io = IO::Memory.new
+      stderr_io = IO::Memory.new
+
+      args = stdin ? ssh_args(command) : ["-n"] + ssh_args(command)
+
+      status = if stdin
+                 Process.run(
+                   command: "ssh",
+                   args: args,
+                   input: IO::Memory.new(stdin),
+                   output: stdout_io,
+                   error: stderr_io,
+                 )
+               else
+                 Process.run(
+                   command: "ssh",
+                   args: args,
+                   output: stdout_io,
+                   error: stderr_io,
+                 )
+               end
+
+      result = Result.new(stdout_io.to_s, stderr_io.to_s, status.exit_code)
+      raise CommandFailed.new(command, result) if raise_on_error && !result.success?
+      result
+    end
+
+    # Écrit `content` dans `remote_path` via `cat > …`. Si `mode` est
+    # fourni, chmode le fichier distant.
+    def write_file(remote_path : String, content : String, mode : String? = nil) : Nil
+      exec("cat > #{Process.quote(remote_path)}", stdin: content)
+      exec("chmod #{mode} #{Process.quote(remote_path)}") if mode
+    end
+
+    # Transfère un fichier local vers la cible via `scp`.
+    def upload(local_path : String, remote_path : String) : Nil
+      status = Process.run(
+        command: "scp",
+        args: scp_args(local_path, "#{@user}@#{@host}:#{remote_path}"),
+      )
+      raise "scp échoué (exit #{status.exit_code}) : #{local_path} → #{@host}:#{remote_path}" unless status.success?
+    end
+
+    # Récupère un fichier distant via `scp`.
+    def download(remote_path : String, local_path : String) : Nil
+      status = Process.run(
+        command: "scp",
+        args: scp_args("#{@user}@#{@host}:#{remote_path}", local_path),
+      )
+      raise "scp échoué (exit #{status.exit_code}) : #{@host}:#{remote_path} → #{local_path}" unless status.success?
+    end
+
+    # Liste des arguments passés au binaire `ssh` pour exécuter
+    # `command`. Exposée pour permettre l'inspection et les tests.
+    def ssh_args(command : String) : Array(String)
+      base_args + ["#{@user}@#{@host}", command]
+    end
+
+    # Liste des arguments passés au binaire `scp` pour transférer
+    # `source` vers `destination`. Exposée pour les tests.
+    def scp_args(source : String, destination : String) : Array(String)
+      args = [] of String
+      args << "-F" << "/dev/null"
+      args << "-P" << @port.to_s
+      if identity = @identity_file
+        args << "-i" << identity
+      end
+      merged_options.each do |key, value|
+        args << "-o" << "#{key}=#{value}"
+      end
+      args << source << destination
+      args
+    end
+
+    private def base_args : Array(String)
+      args = [] of String
+      args << "-F" << "/dev/null"
+      args << "-p" << @port.to_s
+      if identity = @identity_file
+        args << "-i" << identity
+      end
+      merged_options.each do |key, value|
+        args << "-o" << "#{key}=#{value}"
+      end
+      args
+    end
+
+    # Fusion des options : FORCED gagne toujours, puis celles de
+    # l'appelant. Les deux catégories sont émises (ssh prend la
+    # première rencontrée), donc en plaçant FORCED en tête on garantit
+    # qu'elles l'emportent.
+    private def merged_options : Hash(String, String)
+      result = {} of String => String
+      FORCED_OPTIONS.each { |k, v| result[k] = v }
+      @options.each { |k, v| result[k] = v unless FORCED_OPTIONS.has_key?(k) }
+      result
+    end
+  end
+end
