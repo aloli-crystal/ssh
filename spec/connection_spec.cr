@@ -28,6 +28,15 @@ describe SSH::Connection do
       joined.should contain("BatchMode=yes")
       joined.should contain("IdentitiesOnly=yes")
       joined.should contain("IdentityAgent=none")
+      # ConnectTimeout limite le handshake TCP à 10s, évite de
+      # bloquer indéfiniment sur un serveur en cours de boot.
+      joined.should contain("ConnectTimeout=10")
+    end
+
+    it "N'impose PAS ServerAliveInterval (éviterait de couper les " \
+       "commandes longues légitimes comme `dd` ou `pkg install`)" do
+      c = SSH::Connection.new(host: "h1")
+      c.ssh_args("x").join(" ").should_not contain("ServerAlive")
     end
 
     it "ajoute -i <path> quand identity_file est fourni" do

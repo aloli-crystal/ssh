@@ -1,5 +1,5 @@
 name: ssh
-version: 0.1.0
+version: 0.1.1
 
 description: >
   Wrapper Crystal isolé autour du binaire `ssh` système, pour les outils

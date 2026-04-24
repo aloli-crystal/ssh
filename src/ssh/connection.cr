@@ -41,6 +41,20 @@ module SSH
       "BatchMode"             => "yes",
       "IdentitiesOnly"        => "yes",
       "IdentityAgent"         => "none",
+      # ConnectTimeout limite UNIQUEMENT le temps du handshake TCP :
+      # si le serveur n'accepte pas la connexion en moins de 10s,
+      # ssh abandonne cet essai (l'appelant peut re-tenter). Sans
+      # ça, ssh peut bloquer plusieurs minutes quand un serveur est
+      # en cours de redémarrage (rescue pas encore prêt), et la
+      # boucle de polling au-dessus ne sort jamais. Observé sur
+      # Dedibox rescue le 24 avril 2026 : sshd démarre ~20s après
+      # le boot, le 1er ssh de beryl restait bloqué.
+      #
+      # N'impacte PAS la durée des commandes en cours (seul le
+      # handshake de connexion est concerné). Pas de ServerAliveInterval
+      # forcé pour ne pas couper des commandes longues légitimes
+      # (ex: `dd` ou `pkg install` pendant le bootstrap).
+      "ConnectTimeout" => "10",
     }
 
     getter host : String
