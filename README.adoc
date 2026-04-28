@@ -29,10 +29,18 @@ isolé :
   pas de confirmation de fingerprint)
 - `StrictHostKeyChecking=no` : les changements de clé d'hôte ne
   bloquent pas — adapté aux flows rescue/bootstrap
+- `ControlMaster=auto` + `ControlPath=/tmp/crystal-ssh-%C-%i` +
+  `ControlPersist=10m` : multiplexage natif OpenSSH, le 1er ssh
+  ouvre un master, les exec suivants vers la même cible se
+  branchent dessus via un socket UNIX local. Évite le ré-handshake
+  TCP+TLS+auth à chaque commande (gain ~10× sur des flows à 50+
+  exec, type `beryl apply` qui déroule 28 recettes).
 
 Conséquence : deux postes avec des configurations ssh différentes
 exécuteront le même code de la même manière, et beryl ne pollue
-plus votre `~/.ssh/known_hosts` avec des clés jetables.
+plus votre `~/.ssh/known_hosts` avec des clés jetables. Et
+l'enchaînement de commandes vers le même hôte est rapide grâce au
+multiplexage.
 
 == Installation
 

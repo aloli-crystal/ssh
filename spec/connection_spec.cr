@@ -33,6 +33,33 @@ describe SSH::Connection do
       joined.should contain("ConnectTimeout=10")
     end
 
+    it "active ControlMaster pour multiplexer plusieurs exec vers la même cible" do
+      c = SSH::Connection.new(host: "h1")
+      joined = c.ssh_args("echo hi").join(" ")
+      # Multiplexage natif OpenSSH : le 1er ssh ouvre un master,
+      # les suivants vers la même cible se branchent dessus via
+      # un socket UNIX local. Évite le ré-handshake TCP+TLS+auth
+      # à chaque exec (gain ~10× sur des flows à 50+ exec).
+      joined.should contain("ControlMaster=auto")
+      joined.should contain("ControlPath=/tmp/crystal-ssh-%C-%i")
+      joined.should contain("ControlPersist=10m")
+    end
+
+    it "le ControlPath utilise des placeholders OpenSSH safe (%C hash + %i uid)" do
+      c = SSH::Connection.new(host: "very-long-hostname.example.com", port: 12345, user: "deploy")
+      joined = c.ssh_args("x").join(" ")
+      # %C est un hash 8 chars (host+port+user+localhost). %i est
+      # l'uid local. Cela garantit l'unicité par cible et reste
+      # bien sous la limite UNIX socket de 104 chars (macOS).
+      # Le path littéral DOIT être présent comme template — c'est
+      # OpenSSH qui expanse à l'exécution.
+      joined.should contain("ControlPath=/tmp/crystal-ssh-%C-%i")
+      # Sanity check : pas de %h ni de %p dans le path (on ne
+      # veut pas que des hostnames longs explosent la limite
+      # de socket UNIX).
+      joined.should_not contain("ControlPath=/tmp/crystal-ssh-%h")
+    end
+
     it "N'impose PAS ServerAliveInterval (éviterait de couper les " \
        "commandes longues légitimes comme `dd` ou `pkg install`)" do
       c = SSH::Connection.new(host: "h1")

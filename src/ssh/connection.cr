@@ -55,6 +55,32 @@ module SSH
       # forcé pour ne pas couper des commandes longues légitimes
       # (ex: `dd` ou `pkg install` pendant le bootstrap).
       "ConnectTimeout" => "10",
+      #
+      # ControlMaster — multiplexage des connexions SSH. Évite le
+      # ré-handshake (TCP + TLS + auth, ~100-300 ms par exec selon
+      # RTT) à chaque commande quand on enchaîne plusieurs exec
+      # vers la même cible. Le 1er ssh ouvre la session et écrit
+      # un socket UNIX local ; les ssh suivants vers la même cible
+      # se branchent sur ce socket. Gain typique : 10× plus rapide
+      # sur un flow comme `beryl apply` qui peut faire 50-100 exec.
+      #
+      # `auto` = active mode master au 1er exec, slave aux suivants.
+      # `ControlPath` utilise `%C` (hash 8 chars host+port+user+localhost,
+      # garantit l'unicité par cible et reste court) + `%i` (uid local,
+      # cloisonne entre users sur un /tmp partagé). Le path total
+      # fait ~30 chars, largement sous la limite UNIX socket de
+      # 104 chars (macOS) / 108 (Linux).
+      # `ControlPersist=10m` garde le master vivant 10 min après le
+      # dernier exec — utile si beryl tourne en boucle (re-test,
+      # re-apply rapides). Au-delà, le master se ferme tout seul ;
+      # le ssh suivant rouvre une session.
+      #
+      # Si beryl plante, le socket reste sur disque ; au prochain
+      # run, ssh détecte un master orphelin et le nettoie. Aucune
+      # action de cleanup à faire côté Crystal.
+      "ControlMaster"  => "auto",
+      "ControlPath"    => "/tmp/crystal-ssh-%C-%i",
+      "ControlPersist" => "10m",
     }
 
     getter host : String
