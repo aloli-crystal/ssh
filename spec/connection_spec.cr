@@ -41,7 +41,7 @@ describe SSH::Connection do
       # un socket UNIX local. Évite le ré-handshake TCP+TLS+auth
       # à chaque exec (gain ~10× sur des flows à 50+ exec).
       joined.should contain("ControlMaster=auto")
-      joined.should contain("ControlPath=/tmp/crystal-ssh-%C-%i")
+      joined.should contain("ControlPath=/tmp/ssh-%C-%i")
       joined.should contain("ControlPersist=10m")
     end
 
@@ -53,11 +53,11 @@ describe SSH::Connection do
       # bien sous la limite UNIX socket de 104 chars (macOS).
       # Le path littéral DOIT être présent comme template — c'est
       # OpenSSH qui expanse à l'exécution.
-      joined.should contain("ControlPath=/tmp/crystal-ssh-%C-%i")
+      joined.should contain("ControlPath=/tmp/ssh-%C-%i")
       # Sanity check : pas de %h ni de %p dans le path (on ne
       # veut pas que des hostnames longs explosent la limite
       # de socket UNIX).
-      joined.should_not contain("ControlPath=/tmp/crystal-ssh-%h")
+      joined.should_not contain("ControlPath=/tmp/ssh-%h")
     end
 
     it "N'impose PAS ServerAliveInterval (éviterait de couper les " \

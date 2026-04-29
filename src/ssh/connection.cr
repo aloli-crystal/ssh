@@ -79,7 +79,7 @@ module SSH
       # run, ssh détecte un master orphelin et le nettoie. Aucune
       # action de cleanup à faire côté Crystal.
       "ControlMaster"  => "auto",
-      "ControlPath"    => "/tmp/crystal-ssh-%C-%i",
+      "ControlPath"    => "/tmp/ssh-%C-%i",
       "ControlPersist" => "10m",
     }
 

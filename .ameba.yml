@@ -1,0 +1,15 @@
+# ameba configuration
+#
+# Règles désactivées par défaut sur les specs : `not_nil!` et
+# `index! {}` reviennent au même comportement, le choix
+# stylistique ne mérite pas un build cassé.
+Lint/NotNil:
+  Excluded:
+    - spec/**
+Lint/NotNilAfterNoBang:
+  Excluded:
+    - spec/**
+Naming/BlockParameterName:
+  Enabled: false # `c`, `f` sont parfaitement clairs en contexte court
+Performance/ChainedCallWithNoBang:
+  Enabled: false # `.sort` est plus lisible que `.sort!` en chaîne avec `.map`

@@ -29,7 +29,7 @@ isolé :
   pas de confirmation de fingerprint)
 - `StrictHostKeyChecking=no` : les changements de clé d'hôte ne
   bloquent pas — adapté aux flows rescue/bootstrap
-- `ControlMaster=auto` + `ControlPath=/tmp/crystal-ssh-%C-%i` +
+- `ControlMaster=auto` + `ControlPath=/tmp/ssh-%C-%i` +
   `ControlPersist=10m` : multiplexage natif OpenSSH, le 1er ssh
   ouvre un master, les exec suivants vers la même cible se
   branchent dessus via un socket UNIX local. Évite le ré-handshake
