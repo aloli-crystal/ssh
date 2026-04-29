@@ -1,4 +1,4 @@
-= crystal-ssh
+= ssh
 :toc: left
 :toc-title: Table des matières
 :source-highlighter: rouge
@@ -17,7 +17,7 @@ clés par défaut. Cela rend l'exécution **non reproductible** entre
 postes, et pollue les sessions interactives (un reboot en rescue fait
 changer la clé d'hôte → known_hosts cassé, prompt fingerprint).
 
-`crystal-ssh` impose à chaque connexion un contexte totalement
+Le shard `ssh` impose à chaque connexion un contexte totalement
 isolé :
 
 - `-F /dev/null` : ignore `~/.ssh/config`
@@ -48,7 +48,7 @@ multiplexage.
 ----
 dependencies:
   ssh:
-    github: aloli-crystal/crystal-ssh
+    github: aloli-crystal/ssh
     branch: production
 ----
 
