@@ -39,8 +39,16 @@ module SSH
       "GlobalKnownHostsFile"  => "/dev/null",
       "LogLevel"              => "ERROR",
       "BatchMode"             => "yes",
-      "IdentitiesOnly"        => "yes",
-      "IdentityAgent"         => "none",
+      # Force l'IPv4. Si un host a un AAAA mais que l'IPv6 est cassé/filtré
+      # (très courant : pas de route IPv6 sortante, ou sshd public en v4
+      # seulement derrière un pare-feu), ssh peut choisir l'IPv6 de façon
+      # non déterministe et bloquer « during banner exchange ». Observé le
+      # 16 juin 2026 sur un saut ProxyJump vers un bastion (zsbg) dont
+      # l'IPv6 ne répondait pas. beryl adresse ses hôtes en IPv4 (noms
+      # hébergeur / IP vRack privées) → IPv4 forcé évite ce stall.
+      "AddressFamily"  => "inet",
+      "IdentitiesOnly" => "yes",
+      "IdentityAgent"  => "none",
       # ConnectTimeout limite UNIQUEMENT le temps du handshake TCP :
       # si le serveur n'accepte pas la connexion en moins de 10s,
       # ssh abandonne cet essai (l'appelant peut re-tenter). Sans

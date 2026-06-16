@@ -31,6 +31,9 @@ describe SSH::Connection do
       # ConnectTimeout limite le handshake TCP à 10s, évite de
       # bloquer indéfiniment sur un serveur en cours de boot.
       joined.should contain("ConnectTimeout=10")
+      # IPv4 forcé : évite les stalls « banner exchange » quand l'IPv6
+      # d'un host est cassé/filtré (cf. bastion zsbg, 16 juin 2026).
+      joined.should contain("AddressFamily=inet")
     end
 
     it "active ControlMaster pour multiplexer plusieurs exec vers la même cible" do
