@@ -211,7 +211,38 @@ module SSH
       result = {} of String => String
       FORCED_OPTIONS.each { |k, v| result[k] = v }
       @options.each { |k, v| result[k] = v unless FORCED_OPTIONS.has_key?(k) }
+      # `ProxyJump` nu est un piège ici : le saut hérite de `-F /dev/null`
+      # (config ignorée) mais PAS du `-i identity_file` → il tenterait la clé
+      # par défaut (`~/.ssh/id_*`) et se ferait refuser. On le convertit en
+      # `ProxyCommand` explicite qui transporte la MÊME clé + les options
+      # hermétiques jusqu'au bastion.
+      if jump = result.delete("ProxyJump")
+        result["ProxyCommand"] = proxy_command_for(jump)
+      end
       result
+    end
+
+    # Construit le `ProxyCommand` vers le bastion `jump` (`[user@]host[:port]`),
+    # en réémettant `-i identity_file` + les options forcées d'auth/hermétiques
+    # (pas le multiplexage `Control*`, inutile pour un forward stdio `-W`), pour
+    # que le saut soit aussi authentifié et hermétique que la connexion finale.
+    private def proxy_command_for(jump : String) : String
+      parts = ["ssh", "-F", "/dev/null"]
+      pre, sep, post = jump.rpartition(':')
+      host_spec = jump
+      if !sep.empty? && (p = post.to_i?)
+        host_spec = pre
+        parts << "-p" << p.to_s
+      end
+      if id = @identity_file
+        parts << "-i" << id
+      end
+      FORCED_OPTIONS.each do |k, v|
+        next if k.starts_with?("Control")
+        parts << "-o" << "#{k}=#{v}"
+      end
+      parts << "-W" << "%h:%p" << host_spec
+      parts.join(' ')
     end
   end
 end

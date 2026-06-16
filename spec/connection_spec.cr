@@ -104,6 +104,43 @@ describe SSH::Connection do
       joined.should_not contain("StrictHostKeyChecking=yes")
       joined.should contain("Custom=value")
     end
+
+    describe "ProxyJump (saut bastion)" do
+      it "convertit ProxyJump en ProxyCommand qui transporte la clé -i" do
+        c = SSH::Connection.new(
+          host: "192.168.42.32", user: "admin",
+          identity_file: "/keys/pne.key",
+          options: {"ProxyJump" => "admin@zsbg.example.net"},
+        )
+        joined = c.ssh_args("uname -s").join(" ")
+        # plus de ProxyJump nu (qui perdrait la clé au saut)…
+        joined.should_not contain("ProxyJump=")
+        # …mais un ProxyCommand qui réémet la MÊME clé + les options hermétiques
+        joined.should contain("ProxyCommand=ssh -F /dev/null -i /keys/pne.key")
+        joined.should contain("-W %h:%p admin@zsbg.example.net")
+        joined.should contain("IdentitiesOnly=yes")
+      end
+
+      it "ne réémet pas le multiplexage Control* dans le saut" do
+        c = SSH::Connection.new(
+          host: "h", identity_file: "/k",
+          options: {"ProxyJump" => "u@b"},
+        )
+        pc = c.ssh_args("x").join(" ")
+        # le ProxyCommand (forward stdio one-shot) n'a pas besoin de ControlMaster
+        pc.scan(/ControlMaster/).size.should eq(1) # seulement la connexion finale
+      end
+
+      it "gère un bastion avec port (host:port → -p)" do
+        c = SSH::Connection.new(
+          host: "h", identity_file: "/k",
+          options: {"ProxyJump" => "u@b.example.net:2222"},
+        )
+        joined = c.ssh_args("x").join(" ")
+        joined.should contain("-p 2222")
+        joined.should contain("-W %h:%p u@b.example.net") # host sans le :port
+      end
+    end
   end
 
   describe "#scp_args" do
