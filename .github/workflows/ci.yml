@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: crystallang/crystal:latest
+      image: crystallang/crystal:1.19.1
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
