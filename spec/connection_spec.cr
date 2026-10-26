@@ -143,6 +143,43 @@ describe SSH::Connection do
         joined.should contain("-p 2222")
         joined.should contain("-W %h:%p u@b.example.net") # host sans le :port
       end
+
+      it "sans repli : ProxyCommand inchangé (pas de sh -c)" do
+        c = SSH::Connection.new(host: "h", identity_file: "/k", options: {"ProxyJump" => "u@a"})
+        c.ssh_args("x").join(" ").should_not contain("sh -c")
+      end
+
+      it "replis : essaie chaque rebond dans l'ordre et annonce le repli" do
+        c = SSH::Connection.new(
+          host: "192.168.42.11", identity_file: "/k",
+          options: {"ProxyJump" => "u@a.example.net"},
+          jump_fallbacks: ["u@b.example.net", "u@c.example.net", "u@a.example.net"],
+        )
+        pc = c.ssh_args("x").find!(&.starts_with?("ProxyCommand=")).lchop("ProxyCommand=")
+        pc.should start_with("sh -c '")
+        pc.index!("-W %h:%p u@a.example.net").should be < pc.index!("-W %h:%p u@b.example.net")
+        pc.index!("-W %h:%p u@b.example.net").should be < pc.index!("-W %h:%p u@c.example.net")
+        pc.scan("-W %h:%p u@a.example.net").size.should eq(1) # doublon retiré
+        pc.should contain("rebond u@a.example.net injoignable, essai par u@b.example.net")
+        pc.scan("-i /k").size.should eq(3) # la clé à chaque rebond
+      end
+
+      it "replis : commande valide pour sh, chaîne qui s'arrête au premier rebond qui marche" do
+        dir = File.tempname("ssh-fallback")
+        Dir.mkdir(dir)
+        # faux `ssh` : échoue pour le rebond `dead`, réussit sinon, et note qui a servi
+        File.write(File.join(dir, "ssh"), "#!/bin/sh\nfor a; do last=$a; done\necho $last >> #{dir}/log\ncase $last in *dead*) exit 255;; esac\n")
+        File.chmod(File.join(dir, "ssh"), 0o755)
+        c = SSH::Connection.new(host: "t", options: {"ProxyJump" => "u@dead"}, jump_fallbacks: ["u@ok", "u@spare"])
+        pc = c.ssh_args("x").find!(&.starts_with?("ProxyCommand=")).lchop("ProxyCommand=").gsub("%h:%p", "t:22")
+        err = IO::Memory.new
+        st = Process.run("sh", ["-c", pc], env: {"PATH" => "#{dir}:/usr/bin:/bin"}, error: err)
+        st.success?.should be_true
+        File.read_lines(File.join(dir, "log")).should eq ["u@dead", "u@ok"]
+        err.to_s.should contain("rebond u@dead injoignable, essai par u@ok")
+      ensure
+        FileUtils.rm_rf(dir) if dir
+      end
     end
   end
 

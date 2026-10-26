@@ -7,6 +7,16 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format s'inspire de https://keepachangelog.com/fr/1.1.0/[Keep a Changelog]
 et ce projet suit https://semver.org/lang/fr/[Semantic Versioning].
 
+== 0.2.6 (26 octobre 2026)
+
+=== Ajouté
+
+* **Rebonds de repli** : `Connection.new(…, jump_fallbacks: [...])`. Quand
+  le `ProxyJump` des options ne mène pas à la cible (rebond injoignable, ou
+  qui ne la joint plus), les rebonds de repli sont essayés dans l'ordre, avec
+  la même clé et les mêmes options hermétiques ; chaque repli est annoncé sur
+  stderr. Sans repli, le `ProxyCommand` est inchangé.
+
 == 0.2.1 (29 avril 2026)
 
 === Modifié

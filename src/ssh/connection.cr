@@ -96,18 +96,25 @@ module SSH
     getter port : Int32
     getter identity_file : String?
     getter options : Hash(String, String)
+    getter jump_fallbacks : Array(String)
 
     # Crée une connexion vers `host` pour l'utilisateur `user` sur le
     # port `port`. Si `identity_file` est fourni, il est passé en `-i`
     # et aucune autre clé n'est essayée (grâce à `IdentitiesOnly=yes`).
     # Sinon aucune clé n'est fournie → l'auth publickey échouera avec
     # un message clair (cas « pas de clé résoluble »).
+    #
+    # `jump_fallbacks` : rebonds de REPLI (`[user@]host[:port]`), essayés
+    # dans l'ordre quand le `ProxyJump` des `options` ne mène pas à la cible
+    # (rebond injoignable, ou qui ne joint plus la cible). Sans `ProxyJump`,
+    # ignorés.
     def initialize(
       @host : String,
       @user : String = "root",
       @port : Int32 = 22,
       @identity_file : String? = nil,
       @options : Hash(String, String) = {} of String => String,
+      @jump_fallbacks : Array(String) = [] of String,
     )
     end
 
@@ -225,9 +232,28 @@ module SSH
       # `ProxyCommand` explicite qui transporte la MÊME clé + les options
       # hermétiques jusqu'au bastion.
       if jump = result.delete("ProxyJump")
-        result["ProxyCommand"] = proxy_command_for(jump)
+        result["ProxyCommand"] = proxy_command_chain([jump] + @jump_fallbacks)
       end
       result
+    end
+
+    # `ProxyCommand` d'une suite de rebonds : le premier seul tel quel ;
+    # plusieurs → `sh -c '…'` qui essaie chacun jusqu'au premier qui mène à
+    # la cible, en annonçant le repli sur stderr (ssh lance la commande par
+    # `exec`, d'où le `sh -c` pour garder les `||`). Un échec d'authentifi-
+    # cation sur la CIBLE ne déclenche pas de repli : il survient après
+    # l'établissement du tunnel.
+    private def proxy_command_chain(jumps : Array(String)) : String
+      jumps = jumps.uniq
+      return proxy_command_for(jumps.first) if jumps.size == 1
+      chain = String.build do |io|
+        io << proxy_command_for(jumps.first)
+        jumps.each_cons_pair do |previous, nxt|
+          io << " || { echo \"ssh : rebond " << previous << " injoignable, essai par " << nxt << "\" >&2; "
+          io << proxy_command_for(nxt) << "; }"
+        end
+      end
+      "sh -c '#{chain}'"
     end
 
     # Construit le `ProxyCommand` vers le bastion `jump` (`[user@]host[:port]`),
