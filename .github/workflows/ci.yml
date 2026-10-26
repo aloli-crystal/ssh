@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: crystallang/crystal:1.19.1
+      image: crystallang/crystal:1.21.1
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -18,6 +18,6 @@ jobs:
       - name: Format check
         run: crystal tool format --check src/ spec/
       - name: Lint (ameba)
-        run: bin/ameba
+        run: crystal run lib/ameba/bin/ameba.cr --
       - name: Specs
         run: crystal spec
