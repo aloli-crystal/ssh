@@ -256,10 +256,20 @@ module SSH
       "sh -c '#{chain}'"
     end
 
+    # Options d'APPEL (paramètre `options`) réémises aussi sur le rebond
+    # `ProxyCommand` : celles qui décrivent le transport réseau, que le saut
+    # doit partager avec la connexion finale. `IPQoS` (marquage DSCP) : c'est
+    # le rebond qui traverse le réseau local ; demander `{"IPQoS" => "ef"}`
+    # sans l'étendre au saut laisserait ce dernier au marquage par défaut
+    # (`none` sans terminal, OpenSSH 10), mesuré ~250 ms par aller-retour
+    # en Wi-Fi contre ~60 ms en `ef` (25 nov. 2026).
+    HOP_OPTIONS = %w[IPQoS]
+
     # Construit le `ProxyCommand` vers le bastion `jump` (`[user@]host[:port]`),
     # en réémettant `-i identity_file` + les options forcées d'auth/hermétiques
-    # (pas le multiplexage `Control*`, inutile pour un forward stdio `-W`), pour
-    # que le saut soit aussi authentifié et hermétique que la connexion finale.
+    # (pas le multiplexage `Control*`, inutile pour un forward stdio `-W`) + les
+    # options d'appel de `HOP_OPTIONS`, pour que le saut soit aussi authentifié
+    # et hermétique que la connexion finale.
     private def proxy_command_for(jump : String) : String
       parts = ["ssh", "-F", "/dev/null"]
       pre, sep, post = jump.rpartition(':')
@@ -274,6 +284,9 @@ module SSH
       FORCED_OPTIONS.each do |k, v|
         next if k.starts_with?("Control")
         parts << "-o" << "#{k}=#{v}"
+      end
+      @options.each do |k, v|
+        parts << "-o" << "#{k}=#{v}" if HOP_OPTIONS.includes?(k)
       end
       parts << "-W" << "%h:%p" << host_spec
       parts.join(' ')

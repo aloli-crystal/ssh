@@ -7,6 +7,18 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format s'inspire de https://keepachangelog.com/fr/1.1.0/[Keep a Changelog]
 et ce projet suit https://semver.org/lang/fr/[Semantic Versioning].
 
+== 0.2.7 (25 novembre 2026)
+
+=== Ajouté
+
+* **Options d'appel réémises sur le rebond** (`HOP_OPTIONS`, aujourd'hui
+  `IPQoS`) : demandé par `Connection.new(…, options: {"IPQoS" => "ef"})`, le
+  marquage DSCP s'applique aussi au `ProxyCommand` du bastion, qui est la
+  connexion qui traverse le réseau local. Rien n'est imposé : sans l'option,
+  ni la connexion ni le rebond ne portent `IPQoS`. Mesuré en Wi-Fi : ~250 ms
+  par aller-retour au marquage par défaut de ssh sans terminal (`none`),
+  ~60 ms en `ef`.
+
 == 0.2.6 (26 octobre 2026)
 
 === Ajouté

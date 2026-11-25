@@ -34,6 +34,8 @@ describe SSH::Connection do
       # IPv4 forcé : évite les stalls « banner exchange » quand l'IPv6
       # d'un host est cassé/filtré (cf. bastion zsbg, 16 juin 2026).
       joined.should contain("AddressFamily=inet")
+      # marquage DSCP : option d’appel seulement, jamais imposé
+      joined.should_not contain("IPQoS")
     end
 
     it "active ControlMaster pour multiplexer plusieurs exec vers la même cible" do
@@ -122,6 +124,19 @@ describe SSH::Connection do
         joined.should contain("ProxyCommand=ssh -F /dev/null -i /keys/pne.key")
         joined.should contain("-W %h:%p admin@zsbg.example.net")
         joined.should contain("IdentitiesOnly=yes")
+      end
+
+      it "réémet IPQoS demandé à l’appel sur le saut (c’est lui qui traverse le réseau local)" do
+        c = SSH::Connection.new(host: "h", identity_file: "/k", options: {"ProxyJump" => "u@b", "IPQoS" => "ef"})
+        joined = c.ssh_args("true").join(" ")
+        main, _, hop = joined.partition("ProxyCommand=")
+        main.should contain("-o IPQoS=ef")
+        hop.should contain("-o IPQoS=ef")
+      end
+
+      it "sans IPQoS demandé, le saut n’en porte pas" do
+        c = SSH::Connection.new(host: "h", identity_file: "/k", options: {"ProxyJump" => "u@b"})
+        c.ssh_args("true").join(" ").should_not contain("IPQoS")
       end
 
       it "ne réémet pas le multiplexage Control* dans le saut" do
